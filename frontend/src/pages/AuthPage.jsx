@@ -64,6 +64,7 @@ const S = {
     background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
     color: '#fff', fontWeight: 700, fontSize: '0.875rem',
     cursor: 'pointer', boxShadow: '0 2px 10px rgba(99,102,241,0.3)',
+    transition: 'all 0.2s ease',
   },
 };
 
@@ -81,24 +82,59 @@ export default function AuthPage({ defaultTab = 'login' }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(''); setLoading(true);
+    setError('');
+    setLoading(true);
+
     try {
-      const endpoint = tab === 'login' ? '/auth/login' : '/auth/register';
+      // Relative paths appending to baseURL in utils/api.js
+      const endpoint = tab === 'login' ? 'auth/login' : 'auth/register';
+      
       let payload;
       if (tab === 'login') {
         payload = { email: form.email, password: form.password };
       } else if (form.role === 'Admin') {
-        payload = { name: form.name, email: form.email, password: form.password, role: 'Admin', companyName: form.companyName };
+        payload = { 
+          name: form.name, 
+          email: form.email, 
+          password: form.password, 
+          role: 'Admin', 
+          companyName: form.companyName 
+        };
       } else {
-        payload = { name: form.name, email: form.email, password: form.password, role: 'Member', companyId: form.companyId };
+        payload = { 
+          name: form.name, 
+          email: form.email, 
+          password: form.password, 
+          role: 'Member', 
+          companyId: form.companyId 
+        };
       }
+
       const { data } = await api.post(endpoint, payload);
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('role', data.user.role);
-      localStorage.setItem('user', JSON.stringify(data.user));
-      navigate(data.user.role === 'Admin' ? '/admin' : '/dashboard');
+
+      // Store credentials & user session
+      if (data?.token) {
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('role', data.user.role);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        
+        // Redirect based on role
+        navigate(data.user.role === 'Admin' ? '/admin' : '/dashboard');
+      } else {
+        throw new Error('Authentication response did not return a valid token.');
+      }
     } catch (err) {
-      setError(err.response?.data?.message || 'Something went wrong. Please try again.');
+      console.error("Authentication Error:", err);
+      
+      if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+        setError('Server cold-start in progress. Render is spinning up—please wait 10 seconds and try again.');
+      } else if (err.response?.data?.message) {
+        setError(err.response.data.message);
+      } else if (err.request) {
+        setError('Unable to reach server. Please check your network connection or backend configuration.');
+      } else {
+        setError('Something went wrong. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -109,7 +145,7 @@ export default function AuthPage({ defaultTab = 'login' }) {
   return (
     <div style={S.page}>
       <div style={isRegister ? S.containerRegister : S.containerLogin}>
-        {/* Brand */}
+        {/* Brand Header */}
         <div style={S.brand}>
           <div style={S.logoWrap}><span style={S.logoChar}>W</span></div>
           <div style={S.brandText}>
@@ -119,35 +155,65 @@ export default function AuthPage({ defaultTab = 'login' }) {
         </div>
 
         <div style={S.card}>
-          {/* Tab toggle */}
+          {/* Tab Selection */}
           <div style={S.tabs}>
-            <button style={{ ...S.tab, ...(tab === 'login' ? S.tabActive : {}) }} onClick={() => switchTab('login')}>
+            <button 
+              type="button"
+              style={{ ...S.tab, ...(tab === 'login' ? S.tabActive : {}) }} 
+              onClick={() => switchTab('login')}
+            >
               Sign In
             </button>
-            <button style={{ ...S.tab, ...(tab === 'register' ? S.tabActive : {}) }} onClick={() => switchTab('register')}>
+            <button 
+              type="button"
+              style={{ ...S.tab, ...(tab === 'register' ? S.tabActive : {}) }} 
+              onClick={() => switchTab('register')}
+            >
               Create Account
             </button>
           </div>
 
           <form onSubmit={handleSubmit}>
             <div style={S.fields}>
-              {/* ── Register-only: Name + Email in 2-column grid ── */}
               {isRegister ? (
                 <>
                   <div style={S.twoCol}>
                     <div>
                       <label style={S.label}>Full Name</label>
-                      <input style={S.input} name="name" placeholder="Anan Sharma" value={form.name} onChange={handleChange} required />
+                      <input 
+                        style={S.input} 
+                        name="name" 
+                        placeholder="Anan Sharma" 
+                        value={form.name} 
+                        onChange={handleChange} 
+                        required 
+                      />
                     </div>
                     <div>
                       <label style={S.label}>Email Address</label>
-                      <input style={S.input} name="email" type="email" placeholder="you@company.com" value={form.email} onChange={handleChange} required />
+                      <input 
+                        style={S.input} 
+                        name="email" 
+                        type="email" 
+                        placeholder="you@company.com" 
+                        value={form.email} 
+                        onChange={handleChange} 
+                        required 
+                      />
                     </div>
                   </div>
 
                   <div>
                     <label style={S.label}>Password</label>
-                    <input style={S.input} name="password" type="password" placeholder="••••••••" value={form.password} onChange={handleChange} required />
+                    <input 
+                      style={S.input} 
+                      name="password" 
+                      type="password" 
+                      placeholder="••••••••" 
+                      value={form.password} 
+                      onChange={handleChange} 
+                      required 
+                    />
                   </div>
 
                   <div>
@@ -161,7 +227,14 @@ export default function AuthPage({ defaultTab = 'login' }) {
                   {form.role === 'Admin' && (
                     <div>
                       <label style={S.label}>Company Name</label>
-                      <input style={S.input} name="companyName" placeholder="e.g. Acme Technologies" value={form.companyName} onChange={handleChange} required />
+                      <input 
+                        style={S.input} 
+                        name="companyName" 
+                        placeholder="e.g. Acme Technologies" 
+                        value={form.companyName} 
+                        onChange={handleChange} 
+                        required 
+                      />
                       <span style={S.hint}>A Company ID will be generated — share it with your team.</span>
                     </div>
                   )}
@@ -169,21 +242,43 @@ export default function AuthPage({ defaultTab = 'login' }) {
                   {form.role === 'Member' && (
                     <div>
                       <label style={S.label}>Company ID</label>
-                      <input style={S.input} name="companyId" placeholder="Paste the ID from your Admin" value={form.companyId} onChange={handleChange} required />
+                      <input 
+                        style={S.input} 
+                        name="companyId" 
+                        placeholder="Paste the ID from your Admin" 
+                        value={form.companyId} 
+                        onChange={handleChange} 
+                        required 
+                      />
                       <span style={S.hint}>Ask your Admin to copy it from their dashboard.</span>
                     </div>
                   )}
                 </>
               ) : (
-                /* ── Login-only: single column, untouched ── */
                 <>
                   <div>
                     <label style={S.label}>Email Address</label>
-                    <input style={S.input} name="email" type="email" placeholder="you@company.com" value={form.email} onChange={handleChange} required />
+                    <input 
+                      style={S.input} 
+                      name="email" 
+                      type="email" 
+                      placeholder="you@company.com" 
+                      value={form.email} 
+                      onChange={handleChange} 
+                      required 
+                    />
                   </div>
                   <div>
                     <label style={S.label}>Password</label>
-                    <input style={S.input} name="password" type="password" placeholder="••••••••" value={form.password} onChange={handleChange} required />
+                    <input 
+                      style={S.input} 
+                      name="password" 
+                      type="password" 
+                      placeholder="••••••••" 
+                      value={form.password} 
+                      onChange={handleChange} 
+                      required 
+                    />
                   </div>
                 </>
               )}
@@ -195,8 +290,12 @@ export default function AuthPage({ defaultTab = 'login' }) {
               </div>
             )}
 
-            <button style={{ ...S.btn, opacity: loading ? 0.75 : 1 }} type="submit" disabled={loading}>
-              {loading ? 'Please wait…' : isRegister ? 'Create Account' : 'Sign In'}
+            <button 
+              style={{ ...S.btn, opacity: loading ? 0.75 : 1, cursor: loading ? 'not-allowed' : 'pointer' }} 
+              type="submit" 
+              disabled={loading}
+            >
+              {loading ? 'Connecting to Server...' : isRegister ? 'Create Account' : 'Sign In'}
             </button>
           </form>
         </div>

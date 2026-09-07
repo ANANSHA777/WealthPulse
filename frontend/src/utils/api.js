@@ -1,27 +1,45 @@
 import axios from 'axios';
 
+// 1. Resolve base URL safely and strip trailing slashes if present
+const rawBaseUrl = import.meta.env.VITE_API_BASE_URL;
+const baseURL = rawBaseUrl 
+  ? rawBaseUrl.replace(/\/+$/, '') 
+  : 'http://localhost:5000/api';
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api',
+  baseURL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  timeout: 15000, // 15s timeout to handle Render free-tier cold starts
 });
 
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+// 2. Attach JWT token dynamically to outgoing requests
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
 
-// If the server returns 401 (expired/missing company in token), force re-login
-// but only when NOT already on the login/register page to prevent redirect loops
+// 3. Handle auth errors without infinite redirect loops
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const isAuthPage = window.location.pathname === '/login' || window.location.pathname === '/register';
+    const currentPath = window.location.pathname;
+    const isAuthPage = currentPath === '/login' || currentPath === '/register' || currentPath === '/';
+
+    // Clear session and redirect to login on 401 Unauthorized
     if (error.response?.status === 401 && !isAuthPage) {
-      localStorage.clear();
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
       window.location.href = '/login';
     }
+
     return Promise.reject(error);
   }
 );
