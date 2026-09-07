@@ -12,11 +12,10 @@ const companyRoutes = require('./routes/company');
 const app = express();
 
 // ── Middleware ────────────────────────────────────────────────────────────────
-//app.use(cors());
 app.use(cors({
   origin: [
     'http://localhost:5173',
-    'https://wealth-pulse-rust.vercel.app' // Replace with your actual Vercel URL
+    'https://wealth-pulse-rust.vercel.app'
   ],
   credentials: true
 }));
@@ -31,6 +30,13 @@ app.use('/api/company', verifyToken, companyRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
+
+// ── 404 Fallback Handler (Debugging Unmatched Routes) ─────────────────────────
+app.use((req, res) => {
+  console.warn(`⚠️ 404 - Route Not Found: ${req.method} ${req.originalUrl}`);
+  res.status(404).json({ message: `Route ${req.method} ${req.originalUrl} not found on server.` });
+});
 
 // ── Database + Server ─────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
@@ -53,7 +59,7 @@ mongoose
   .connect(MONGODB_URI)
   .then(() => {
     console.log('✅  Connected to MongoDB Atlas');
-    app.listen(PORT, () => console.log(`🚀  Server running on http://localhost:${PORT}`));
+    app.listen(PORT, () => console.log(`🚀  Server running on port ${PORT}`));
   })
   .catch((err) => {
     console.error('❌  MongoDB connection failed:', err.message);

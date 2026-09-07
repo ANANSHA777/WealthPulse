@@ -7,12 +7,16 @@ const Company = require('../models/Company');
 
 const router = express.Router();
 
-const signToken = (user) =>
-  jwt.sign(
+const signToken = (user) => {
+  if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET is missing from environment variables.');
+  }
+  return jwt.sign(
     { id: user._id, email: user.email, role: user.role, company: user.company },
     process.env.JWT_SECRET,
     { expiresIn: '7d' }
   );
+};
 
 const userPayload = (user) => ({
   id: user._id,
@@ -22,12 +26,18 @@ const userPayload = (user) => ({
   company: user.company,
 });
 
-// POST /api/auth/register
+// Mounted at /api/auth in server.js → Route is POST /api/auth/register
 router.post('/register', async (req, res) => {
   try {
     const { name, email, password, role, companyName, companyId } = req.body;
 
-    const existing = await User.findOne({ email });
+    if (!email || !password || !name) {
+      return res.status(400).json({ message: 'Name, email, and password are required.' });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const existing = await User.findOne({ email: normalizedEmail });
     if (existing) {
       return res.status(409).json({ message: 'Email already registered' });
     }
@@ -35,14 +45,12 @@ router.post('/register', async (req, res) => {
     let companyObjectId;
 
     if (role === 'Admin') {
-      // Admin registers → create a new Company
-      if (!companyName) {
+      if (!companyName || !companyName.trim()) {
         return res.status(400).json({ message: 'companyName is required for Admin registration' });
       }
-      const company = await Company.create({ name: companyName });
+      const company = await Company.create({ name: companyName.trim() });
       companyObjectId = company._id;
     } else {
-      // Member registers → must supply an existing companyId to join
       if (!companyId) {
         return res.status(400).json({ message: 'companyId is required for Member registration' });
       }
@@ -59,7 +67,7 @@ router.post('/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = await User.create({
       name,
-      email,
+      email: normalizedEmail,
       password: hashedPassword,
       role: role || 'Member',
       company: companyObjectId,
@@ -70,16 +78,23 @@ router.post('/register', async (req, res) => {
       user: userPayload(user),
     });
   } catch (err) {
+    console.error('Registration Error:', err);
     res.status(500).json({ message: 'Registration failed', error: err.message });
   }
 });
 
-// POST /api/auth/login
+// Mounted at /api/auth in server.js → Route is POST /api/auth/login
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const user = await User.findOne({ email });
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password are required.' });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const user = await User.findOne({ email: normalizedEmail });
     if (!user) {
       return res.status(401).json({ message: 'Invalid email or password' });
     }
@@ -89,7 +104,6 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid email or password' });
     }
 
-    // Account exists but was created before multi-tenant migration
     if (!user.company) {
       return res.status(403).json({
         message: 'Your account was created before the multi-tenant update. Please register a new account.',
@@ -101,6 +115,7 @@ router.post('/login', async (req, res) => {
       user: userPayload(user),
     });
   } catch (err) {
+    console.error('Login Error:', err);
     res.status(500).json({ message: 'Login failed', error: err.message });
   }
 });
